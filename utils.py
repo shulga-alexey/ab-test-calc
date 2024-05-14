@@ -8,6 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from scipy.stats import norm
+from sklearn.metrics import mean_squared_error
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.statespace.sarimax import SARIMAX
@@ -104,12 +105,15 @@ class ABTestDuration:
         """
         self.sample_size = sample_size
         self.seasonal_cycle = seasonal_cycle
-        self.time_series = self.__query_result(query)
-        self.optimal_params = self.__search_optimal_params()
 
+        time_series = self.__query_result(query)
+        train_size = int(len(time_series) * 0.8)
+        self.train, self.test = time_series[0: train_size], time_series[train_size: len(time_series)]
+
+        self.optimal_params = self.__search_optimal_params()
         if self.seasonal_cycle:
             model = SARIMA(
-                self.time_series,
+                self.train,
                 order=self.optimal_params['optimal_order_param'],
                 seasonal_order=self.optimal_params['optimal_seasonal_param'],
                 enforce_stationarity=False,
@@ -117,12 +121,13 @@ class ABTestDuration:
             )
         else:
             model = ARIMA(
-                self.time_series,
+                self.train,
                 order=self.optimal_params['optimal_order_param'],
                 enforce_stationarity=False,
                 enforce_invertibility=False
             )
         self.model_fit = model.fit()
+
         self.minimum_days = self.__minimum_days()
 
     def __query_result(self, query) -> pd.DataFrame:
@@ -161,7 +166,7 @@ class ABTestDuration:
                 for seasonal_param in seasonal_combinations:
                     try:
                         sarima_model = SARIMAX(
-                            self.time_series,
+                            self.train,
                             order=order_param,
                             seasonal_order=seasonal_param,
                             enforce_stationarity=False,
@@ -178,7 +183,7 @@ class ABTestDuration:
             for order_param in pdq_combinations:
                 try:
                     arima_model = ARIMA(
-                        self.time_series,
+                        self.train,
                         order=order_param,
                         enforce_stationarity=False,
                         enforce_invertibility=False
@@ -198,7 +203,7 @@ class ABTestDuration:
 
     def __minimum_days(self) -> int:
         """Функция возвращает количество дней, которое требуется для набора выборки."""
-        forecast_future = self.model_fit.forecast(steps=100)
+        forecast_future = self.model_fit.forecast(steps=500)[len(self.train):]
 
         sum_amount, num_days = 0, 0
         for index, amount in sorted(forecast_future.items(), key=(lambda x: x[0])):
@@ -211,7 +216,7 @@ class ABTestDuration:
 
     def adfuller_test(self) -> None:
         """Функция возвращает результат теста Дики-Фуллера на стационарность временного ряда."""
-        adfuller_result = adfuller(self.time_series[self.AMOUNT_COLOUMN])
+        adfuller_result = adfuller(self.train[self.AMOUNT_COLOUMN])
 
         print('ADF Statistic: %f' % adfuller_result[0])
         print('p-value: %f' % adfuller_result[1])
@@ -222,25 +227,40 @@ class ABTestDuration:
     def show(self) -> None:
         """Функция выводит в консоль подробную информацию по фиттированию, временной ряд и прогнозируемый эффект."""
         print(self.model_fit.summary())
+
         self.model_fit.plot_diagnostics(figsize=(12, 8))
         plt.show()
 
-        start = self.time_series.index.max() + datetime.timedelta(days=1)
+        start = self.train.index.max() + datetime.timedelta(days=1)
+        periods = len(self.test) + self.minimum_days
+
+        forecast = self.model_fit.get_forecast(steps=periods)
         forecast_df = pd.DataFrame({
-            self.DATE_COLOUMN: pd.date_range(start=start, periods=self.minimum_days, freq='D'),
-            self.AMOUNT_PRED_COLOUMN: self.model_fit.forecast(steps=self.minimum_days)
+            self.DATE_COLOUMN: pd.date_range(start=start, periods=periods, freq='D'),
+            self.AMOUNT_PRED_COLOUMN: forecast.predicted_mean
         })
         forecast_df.set_index('date', inplace=True)
 
-        plt.figure(figsize=(12, 6))
-        plt.plot(self.time_series.index, self.time_series[self.AMOUNT_COLOUMN], label='Исходные данные')
-        plt.plot(forecast_df.index, forecast_df[self.AMOUNT_PRED_COLOUMN], label='Прогноз')
-        plt.title('Прогноз для временного ряда')
+        # Calculate the mean squared error
+        mse = mean_squared_error(self.test, forecast_df[:self.test.index.max()])
+        rmse = mse ** 0.5
+
+        # Create a plot to compare the forecast with the actual test data
+        plt.figure(figsize=(12, 8))
+        plt.plot(self.train, label='Training Data')
+        plt.plot(self.test, label='Actual Data', color='orange')
+        plt.plot(forecast_df, label='Forecasted Data', color='green')
+        plt.fill_between(forecast_df.index,
+                         forecast.conf_int().iloc[:, 0],
+                         forecast.conf_int().iloc[:, 1],
+                         color='k', alpha=0.05)
+        plt.title('ARIMA Model Evaluation')
         plt.xlabel('Date')
         plt.ylabel('Amount')
         plt.legend()
-        plt.grid(True)
         plt.show()
+
+        print('RMSE:', rmse)
 
     def __str__(self) -> str:
         """Функция возвращает результат расчета продолжительности A/B-теста в строковом виде."""
@@ -248,6 +268,6 @@ class ABTestDuration:
         return (
             f'____________________________________________________________________________________\n'
             f'Всего необходимо набрать событий: {self.sample_size}\n'
-            f'Ожидаемое время набора выборки, если начать сегодня: {self.minimum_days}\n дней'
+            f'Ожидаемое время набора выборки, если начать сегодня: {self.minimum_days} дней\n'
             f'____________________________________________________________________________________\n'
         )

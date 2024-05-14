@@ -1,4 +1,5 @@
 """Элементы калькулятора параметров A/B-теста."""
+import datetime
 import config
 import clickhouse_connect
 import itertools
@@ -218,14 +219,15 @@ class ABTestDuration:
         for key, value in adfuller_result[4].items():
             print('\t%s: %.3f' % (key, value))
 
-    def show(self, day_start_test) -> None:
+    def show(self) -> None:
         """Функция выводит в консоль подробную информацию по фиттированию, временной ряд и прогнозируемый эффект."""
         print(self.model_fit.summary())
         self.model_fit.plot_diagnostics(figsize=(12, 8))
         plt.show()
 
+        start = self.time_series.index.max() + datetime.timedelta(days=1)
         forecast_df = pd.DataFrame({
-            self.DATE_COLOUMN: pd.date_range(start=pd.to_datetime(day_start_test, format='%Y-%m-%d'), periods=self.minimum_days, freq='D'),
+            self.DATE_COLOUMN: pd.date_range(start=start, periods=self.minimum_days, freq='D'),
             self.AMOUNT_PRED_COLOUMN: self.model_fit.forecast(steps=self.minimum_days)
         })
         forecast_df.set_index('date', inplace=True)
@@ -246,7 +248,6 @@ class ABTestDuration:
         return (
             f'____________________________________________________________________________________\n'
             f'Всего необходимо набрать событий: {self.sample_size}\n'
-            f'____________________________________________________________________________________\n'
-            f'Ожидаемое время набора выборки: {self.minimum_days}\n'
+            f'Ожидаемое время набора выборки, если начать сегодня: {self.minimum_days}\n дней'
             f'____________________________________________________________________________________\n'
         )

@@ -60,6 +60,9 @@ class ABTestSampleSize:
            - n - минимальный статистически значимый размер контрольной выборки; [0, inf)
            - m - минимальный статистически значимый размер одной из k тестовых выборок; [0, inf)
         """
+        if is_em_calc and conversion > 0.5:
+            conversion = 1 - conversion
+
         delta = self.mde
         sample_rate = self.m_coeff / self.n_coeff
         conv_control = conversion

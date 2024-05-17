@@ -20,7 +20,7 @@ class ABTestSampleSize:
     def __init__(self, mde:float=0.05, alpha:float=0.05, beta:float=0.2, two_sided:bool=True, k:int=1) -> None:
         """Конструктор класса.
         Аргументы (определение; диапазон значений; дефолтное значение):
-           - mde - абсолютный (относительный для mean) минимальный детектируемый эффект; [0, 1.0]; 0.05
+           - mde - абсолютный минимальный детектируемый эффект; [0, 1.0]; 0.05
            - alpha - вероятность ошибки I рода; [0, 1.0]; 0.05
            - beta - вероятность ошибки II рода; [0, 1.0]; 0.2
            - two_sided - флаг двустороннего теста; [False, True]; True
@@ -43,7 +43,7 @@ class ABTestSampleSize:
            - n - минимальный статистически значимый размер контрольной выборки; [0, inf)
            - m - минимальный статистически значимый размер одной из k тестовых выборок; [0, inf)
         """
-        delta = mean * self.mde
+        delta = self.mde
         total = np.ceil(
             (self.n_coeff + self.m_coeff) * (sigma * (self.z_alpha + self.z_beta) / delta) ** 2
         )
@@ -230,8 +230,11 @@ class ABTestDuration:
     def show(self) -> None:
         """Функция выводит в консоль подробную информацию по фиттированию, временной ряд и прогнозируемый эффект."""
         print(self.model_fit.summary())
-
-        self.model_fit.plot_diagnostics(figsize=(12, 8))
+        
+        try:
+            self.model_fit.plot_diagnostics(figsize=(12, 8))
+        except:
+            self.model_fit.plot_diagnostics(lags=4, figsize=(12, 8))
         plt.show()
 
         start = self.train.index.max() + datetime.timedelta(days=1)

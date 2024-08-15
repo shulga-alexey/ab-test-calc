@@ -20,7 +20,7 @@ class ABTestSampleSize:
     def __init__(self, mde:float=0.05, alpha:float=0.05, beta:float=0.2, two_sided:bool=True, k:int=1) -> None:
         """Конструктор класса.
         Аргументы (определение; диапазон значений; дефолтное значение):
-           - mde - абсолютный минимальный детектируемый эффект; [0, 1.0]; 0.05
+           - mde - абсолютный минимальный детектируемый эффект; [0, inf); 0.05
            - alpha - вероятность ошибки I рода; [0, 1.0]; 0.05
            - beta - вероятность ошибки II рода; [0, 1.0]; 0.2
            - two_sided - флаг двустороннего теста; [False, True]; True
@@ -74,6 +74,30 @@ class ABTestSampleSize:
         ) / delta) ** 2)
 
         self.data = np.array([n, n * sample_rate]).astype(int), 'conversion'
+        return self.data
+    
+    def get_sample_size_for_ratio(self, mean1:float, sigma1:float, mean2:float, sigma2:float):
+        """Функция вычисляет размер выборки в случае, когда метрика - отношние сумм (ратио).
+        Аргументы (определение; диапазон значений):
+           - mean1 - среднее в выборке, по которой считается верхняя сумма; (-inf, inf)
+           - sigma1 - стандартное отклонение в выборке, по которой считается верхняя сумма; (-inf, inf)
+           - mean2 - среднее в выборке, по которой считается нижняя сумма (-inf, inf)
+           - sigma2 - стандартное отклонение в выборке, по которой считается нижняя сумма; (-inf, inf)
+        Возвращаемое значение (массив [n, m]):
+           - n - минимальный статистически значимый размер контрольной выборки; [0, inf)
+           - m - минимальный статистически значимый размер одной из k тестовых выборок; [0, inf)
+        """
+        delta = self.mde
+        sigma = np.sqrt(
+            (mean1 / mean2) ** 2 * (
+                (sigma1 / mean1) ** 2 + (sigma2 / mean2) ** 2 - 2 * np.sqrt(sigma1 ** 2 + sigma2 ** 2) / (mean1 * mean2)
+            )
+        )
+        total = np.ceil(
+            (self.n_coeff + self.m_coeff) * (sigma * (self.z_alpha + self.z_beta) / delta) ** 2
+        )
+        
+        self.data = np.array([total / self.n_coeff, total / self.m_coeff]).astype(int), 'ratio'
         return self.data
     
     def __str__(self) -> str:
@@ -157,7 +181,7 @@ class ABTestDuration:
            - smallest_aic - оптимальный aic, который можно получить для данной модели
         """
         smallest_aic = float("inf")
-        order_vals = diff_vals = ma_vals = range(0, 3)
+        order_vals = diff_vals = ma_vals = range(0, 2)
 
         pdq_combinations = list(itertools.product(order_vals, diff_vals, ma_vals))
         seasonal_combinations = [(combo[0], combo[1], combo[2], self.seasonal_cycle) for combo in pdq_combinations]
@@ -248,9 +272,13 @@ class ABTestDuration:
         forecast_df.set_index('date', inplace=True)
 
         # Calculate the mean squared error
-        mse = mean_squared_error(self.test, forecast_df[:self.test.index.max()])
-        rmse = mse ** 0.5
-
+        try:
+            mse = mean_squared_error(self.test, forecast_df[:self.test.index.max()])
+            rmse = mse ** 0.5
+            print('RMSE:', rmse)
+        except:
+            pass
+        
         # Create a plot to compare the forecast with the actual test data
         plt.figure(figsize=(12, 8))
         plt.plot(self.train, label='Training Data')
@@ -266,7 +294,6 @@ class ABTestDuration:
         plt.legend()
         plt.show()
 
-        print('RMSE:', rmse)
 
     def __str__(self) -> str:
         """Функция возвращает результат расчета продолжительности A/B-теста."""

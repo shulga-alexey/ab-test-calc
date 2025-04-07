@@ -29,7 +29,7 @@ class ABTestSampleSize:
         self.input_data = {'MDE': mde, 'Alpha': alpha, 'Beta': beta, 'TwoSided': two_sided}
         self.k = k
         self.mde = mde
-        self.z_alpha = norm.ppf(1 - alpha / 2) if two_sided else norm.ppf(1 - alpha)
+        self.z_alpha = norm.ppf(1 - alpha / (2 * k)) if two_sided else norm.ppf(1 - alpha / k)
         self.z_beta = norm.ppf(1 - beta)
         self.n_coeff = 1 + np.sqrt(k)
         self.m_coeff = k + np.sqrt(k)
@@ -76,13 +76,14 @@ class ABTestSampleSize:
         self.data = np.array([n, n * sample_rate]).astype(int), 'conversion'
         return self.data
     
-    def get_sample_size_for_ratio(self, mean1:float, sigma1:float, mean2:float, sigma2:float):
+    def get_sample_size_for_ratio(self, mean1:float, sigma1:float, mean2:float, sigma2:float, cov12:float):
         """Функция вычисляет размер выборки в случае, когда метрика - отношние сумм (ратио).
         Аргументы (определение; диапазон значений):
            - mean1 - среднее в выборке, по которой считается верхняя сумма; (-inf, inf)
            - sigma1 - стандартное отклонение в выборке, по которой считается верхняя сумма; (-inf, inf)
-           - mean2 - среднее в выборке, по которой считается нижняя сумма (-inf, inf)
+           - mean2 - среднее в выборке, по которой считается нижняя сумма; (-inf, inf)
            - sigma2 - стандартное отклонение в выборке, по которой считается нижняя сумма; (-inf, inf)
+           - cov12 - ковариация первой и второй выборки; (-inf, inf)
         Возвращаемое значение (массив [n, m]):
            - n - минимальный статистически значимый размер контрольной выборки; [0, inf)
            - m - минимальный статистически значимый размер одной из k тестовых выборок; [0, inf)
@@ -90,7 +91,7 @@ class ABTestSampleSize:
         delta = self.mde
         sigma = np.sqrt(
             (mean1 / mean2) ** 2 * (
-                (sigma1 / mean1) ** 2 + (sigma2 / mean2) ** 2 - 2 * np.sqrt(sigma1 ** 2 + sigma2 ** 2) / (mean1 * mean2)
+                (sigma1 / mean1) ** 2 + (sigma2 / mean2) ** 2 - 2 * cov12 / (mean1 * mean2)
             )
         )
         total = np.ceil(
